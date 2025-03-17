@@ -25,6 +25,12 @@ calculator_tool = PythonInterpreterTool(
     authorized_imports=["math"],  # Customize available imports
 )
 
+# Add this before creating vf_env
+print("Example format check:")
+print(f"Type of few-shot: {type(SMOLA_CALCULATOR_FEW_SHOT)}")
+print(f"Type of first element: {type(SMOLA_CALCULATOR_FEW_SHOT[0])}")
+if SMOLA_CALCULATOR_FEW_SHOT:
+    print(f"Content of first element: {SMOLA_CALCULATOR_FEW_SHOT[0]}")
 # Initialize SmolaToolEnv
 vf_env = vf.SmolaToolEnv(
     dataset="gsm8k",
