@@ -4,7 +4,7 @@ Few-shot examples for SmolaAgents tools.
 
 from verifiers.parsers.smola_parser import SmolaParser
 
-smola_parser = SmolaParser(fields=["reasoning", "tool_call", "answer"])
+smola_parser = SmolaParser(fields=["reasoning", ("tool_call", "answer")])
 result_parser = SmolaParser(fields=["result"])
 
 SMOLA_CALCULATOR_FEW_SHOT = [
