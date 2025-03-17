@@ -76,8 +76,7 @@ class SmolaToolEnv(MultiStepEnv):
             for i, example in enumerate(few_shot):
                 print(f"Example {i}:")
                 for msg in example:
-                    print(f"  Role: {msg['role']}")
-                    print(f"  Content: {msg['content']}")
+                    print(msg)
             print("===== END FEW-SHOT EXAMPLES =====\n")
     
     def _format_tool_descriptions(self, tools) -> str:
