@@ -66,8 +66,19 @@ class SmolaToolEnv(MultiStepEnv):
         self.eval_dataset = None
         self.max_steps = max_steps
         self.rubric = SmolaToolRubric()
-        self.llm_parser = SmolaParser(fields=["reasoning", "tool_call", "answer"])
+        # Update parser to recognize both tool and tool_call tags
+        self.llm_parser = SmolaParser(fields=["reasoning", ("tool", "tool_call"), "answer"])
         self.env_parser = SmolaParser(fields=["result"])
+        
+        # Debug: Print few-shot examples
+        if few_shot:
+            print("\n===== FEW-SHOT EXAMPLES =====")
+            for i, example in enumerate(few_shot):
+                print(f"Example {i}:")
+                for msg in example:
+                    print(f"  Role: {msg['role']}")
+                    print(f"  Content: {msg['content']}")
+            print("===== END FEW-SHOT EXAMPLES =====\n")
     
     def _format_tool_descriptions(self, tools) -> str:
         """
@@ -219,18 +230,45 @@ class SmolaToolEnv(MultiStepEnv):
         Returns:
             Environment response message
         """
+        print("\n===== DEBUGGING ENV_RESPONSE =====")
+        print(f"Last message content: {messages[-1]['content']}")
+        
         try:
-            # Check for a tool call in the message
+            # Check for a tool call using SmolaParser
             tool_call = self.llm_parser.parse_tool_call(messages[-1]["content"])
+            print(f"Parsed tool_call: {tool_call}")
+            
+            # Check direct XML parsing for both tags
+            parsed = self.llm_parser.parse(messages[-1]["content"])
+            print(f"Direct parser results: tool_call={getattr(parsed, 'tool_call', None)}")
+            
+            # Also check if there's a <tool> tag (backward compatibility)
+            if hasattr(parsed, 'tool') and parsed.tool is not None:
+                print(f"Found <tool> tag: {parsed.tool}")
+                try:
+                    # Try to parse it as JSON
+                    tool_json = json.loads(parsed.tool)
+                    if isinstance(tool_json, dict) and 'name' in tool_json:
+                        print(f"Successfully parsed <tool> tag as JSON: {tool_json}")
+                        tool_call = tool_json
+                except json.JSONDecodeError:
+                    print(f"Could not parse <tool> tag as JSON: {parsed.tool}")
             
             if tool_call is not None:
                 # Call the tool and format the result
-                result = self.call_tool(json.dumps(tool_call))
+                print(f"Calling tool: {json.dumps(tool_call) if isinstance(tool_call, dict) else tool_call}")
+                result = self.call_tool(json.dumps(tool_call) if isinstance(tool_call, dict) else tool_call)
+                print(f"Tool result: {result}")
                 if len(result.strip()) > 0:
                     return {"role": "user", "content": self.env_parser.format(result=result)}
                 else:
                     return {"role": "user", "content": "Error: Tool execution returned empty output."}
         except Exception as e:
+            print(f"Exception in env_response: {e}")
+            import traceback
+            print(traceback.format_exc())
             return {"role": "user", "content": f"Error: {str(e)}"}
         
+        print("No valid tool call found")
+        print("===== END DEBUGGING ENV_RESPONSE =====\n")
         return {"role": "user", "content": "Error: Tool command not found or invalid format. Please ensure correct formatting."}
