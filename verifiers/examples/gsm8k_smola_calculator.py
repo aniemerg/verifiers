@@ -40,7 +40,7 @@ rubric = vf_env.get_rubric()
 run_name = "gsm8k-smola-calc_" + model_name.split("/")[-1].lower()
 training_args = vf.get_default_grpo_config(
     run_name=run_name,
-    num_gpus=8
+    num_gpus=1
 )
 # rollouts per prompt
 training_args.num_generations = 2
