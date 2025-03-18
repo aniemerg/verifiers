@@ -71,13 +71,16 @@ class SmolaToolEnv(MultiStepEnv):
         self.env_parser = SmolaParser(fields=["result"])
         
         # Debug: Print few-shot examples
+        '''
         if few_shot:
             print("\n===== FEW-SHOT EXAMPLES =====")
             for i, example in enumerate(few_shot):
                 print(f"Example {i}:")
                 for msg in example:
                     print(msg)
-            print("===== END FEW-SHOT EXAMPLES =====\n")
+            print("===== END FEW-SHOT EXAMPLES =====\n")'
+        '''
+        
     
     def _format_tool_descriptions(self, tools) -> str:
         """
