@@ -1,4 +1,5 @@
 from typing import Callable, Optional, Union, Any, List
+import logging
 
 from accelerate.utils import broadcast_object_list, gather, gather_object
 from datasets import Dataset, IterableDataset
@@ -19,6 +20,8 @@ from trl.trainer.utils import pad
 
 from verifiers.envs.environment import Environment
 from verifiers.utils.logging_utils import print_prompt_completions_sample
+
+logger = logging.getLogger("verifiers.trainers.grpo_env_trainer")
 
 if is_peft_available():
     from peft import PeftConfig # type: ignore
@@ -43,107 +46,182 @@ class GRPOEnvTrainer(GRPOTrainer):
             peft_config: Optional["PeftConfig"] = None,
             **kwargs,
     ):
-        if not args.use_vllm: # type: ignore
-            raise ValueError("vLLM must be enabled for GRPOEnvTrainer")
+        logger.info("Initializing GRPOEnvTrainer...")
+        logger.debug(f"Environment type: {type(env).__name__}")
+        
+        if args is not None:
+            logger.debug(f"Config: num_gpus={getattr(args, 'num_gpus', 'N/A')}, num_generations={getattr(args, 'num_generations', 'N/A')}")
+            if not args.use_vllm: # type: ignore
+                logger.error("vLLM must be enabled for GRPOEnvTrainer")
+                raise ValueError("vLLM must be enabled for GRPOEnvTrainer")
+        else:
+            logger.warning("No GRPOConfig args provided")
+            
+        logger.info("Checking reward functions...")
         if not (callable(reward_funcs) or (isinstance(reward_funcs, list) and all(callable(f) for f in reward_funcs))): 
+            logger.error("Invalid reward_funcs format")
             raise ValueError("reward_funcs must be a function or a list of functions. Use vLLM to host neural reward models.")
-        super().__init__(
-            model=model,
-            reward_funcs=reward_funcs,
-            args=args,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            processing_class=processing_class,
-            callbacks=callbacks,
-            optimizers=optimizers,
-            peft_config=peft_config,
-            **kwargs,
-        )
+        
+        logger.info("Calling parent GRPOTrainer.__init__...")
+        try:
+            super().__init__(
+                model=model,
+                reward_funcs=reward_funcs,
+                args=args,
+                train_dataset=train_dataset,
+                eval_dataset=eval_dataset,
+                processing_class=processing_class,
+                callbacks=callbacks,
+                optimizers=optimizers,
+                peft_config=peft_config,
+                **kwargs,
+            )
+            logger.info("Parent GRPOTrainer initialization successful")
+        except Exception as e:
+            logger.error(f"Error during parent GRPOTrainer initialization: {str(e)}", exc_info=True)
+            raise
+            
         self.env = env
+        logger.info("GRPOEnvTrainer initialization complete")
 
     def _generate_and_score_completions(
          self, inputs: dict[str, Union[torch.Tensor, Any]]   
     ) -> dict[str, Union[torch.Tensor, Any]]:
+        logger.debug("Starting _generate_and_score_completions")
         device = self.accelerator.device
-        prompts = [x["prompt"] for x in inputs] # type: ignore
-        prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in inputs] # type: ignore
-        prompt_inputs = self.processing_class(
-            prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False # type: ignore
-        ) # type: ignore
-        prompt_inputs = Trainer._prepare_inputs(self, prompt_inputs) # type: ignore
-        prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
+        logger.debug(f"Using device: {device}")
+        
+        try:
+            prompts = [x["prompt"] for x in inputs] # type: ignore
+            logger.debug(f"Extracted {len(prompts)} prompts from inputs")
+            
+            prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in inputs] # type: ignore
+            logger.debug(f"Applied chat template to prompts")
+            
+            prompt_inputs = self.processing_class(
+                prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False # type: ignore
+            ) # type: ignore
+            prompt_inputs = Trainer._prepare_inputs(self, prompt_inputs) # type: ignore
+            prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
+            logger.debug(f"Tokenized prompts, shape: {prompt_ids.shape}")
 
-        if self.max_prompt_length is not None:
-            prompt_ids = prompt_ids[:, -self.max_prompt_length :]
-            prompt_mask = prompt_mask[:, -self.max_prompt_length :]
+            if self.max_prompt_length is not None:
+                prompt_ids = prompt_ids[:, -self.max_prompt_length :]
+                prompt_mask = prompt_mask[:, -self.max_prompt_length :]
+                logger.debug(f"Truncated prompt_ids to max_prompt_length: {self.max_prompt_length}")
 
-        if self.state.global_step != self._last_loaded_step:
-            self._move_model_to_vllm()
-            self._last_loaded_step = self.state.global_step
+            if self.state.global_step != self._last_loaded_step:
+                logger.info(f"Global step changed ({self._last_loaded_step} -> {self.state.global_step}), moving model to vLLM")
+                self._move_model_to_vllm()
+                self._last_loaded_step = self.state.global_step
 
-        # Gather the original prompts in message dict form, not the text form
-        all_prompts = gather_object(prompts)
-        if self.accelerator.is_main_process:
-            env_result = self.env.generate(
-                prompts=all_prompts,
-                llm=self.llm,
-                sampling_params=self.sampling_params,
-            )
-            completion_ids = env_result['ids']
-            completion_messages = env_result['messages']
-            completion_mask = env_result['mask']
+            # Gather the original prompts in message dict form, not the text form
+            all_prompts = gather_object(prompts)
+            logger.debug(f"Gathered {len(all_prompts)} prompts from all processes")
+            
+            if self.accelerator.is_main_process:
+                logger.info(f"Main process generating environment completions for {len(all_prompts)} prompts")
+                try:
+                    env_result = self.env.generate(
+                        prompts=all_prompts,
+                        llm=self.llm,
+                        sampling_params=self.sampling_params,
+                    )
+                    logger.debug("Environment generate call succeeded")
+                    completion_ids = env_result['ids']
+                    completion_messages = env_result['messages']
+                    completion_mask = env_result['mask']
+                    logger.debug(f"Generated {len(completion_ids)} completions")
+                except Exception as e:
+                    logger.error(f"Error during environment generation: {str(e)}", exc_info=True)
+                    raise
+            else:
+                logger.debug("Non-main process, creating empty placeholder for completions")
+                completion_ids = [None] * len(all_prompts)
+                completion_messages = [None] * len(all_prompts)
+                completion_mask = [None] * len(all_prompts)
+        except Exception as e:
+            logger.error(f"Error in early stage of _generate_and_score_completions: {str(e)}", exc_info=True)
+            raise
 
-        else:
-            completion_ids = [None] * len(all_prompts)
-            completion_messages = [None] * len(all_prompts)
-            completion_mask = [None] * len(all_prompts)
-
-        completion_ids = broadcast_object_list(completion_ids, from_process=0)
-        completion_messages = broadcast_object_list(completion_messages, from_process=0)
-        completion_mask = broadcast_object_list(completion_mask, from_process=0)
+        logger.debug("Broadcasting completion data from main process to all processes")
+        try:
+            completion_ids = broadcast_object_list(completion_ids, from_process=0)
+            completion_messages = broadcast_object_list(completion_messages, from_process=0)
+            completion_mask = broadcast_object_list(completion_mask, from_process=0)
+            logger.debug("Broadcast successful")
+        except Exception as e:
+            logger.error(f"Error during broadcast: {str(e)}", exc_info=True)
+            raise
 
         process_slice = slice(
             self.accelerator.process_index * len(prompts),
             (self.accelerator.process_index + 1) * len(prompts),
         )
+        logger.debug(f"Process index: {self.accelerator.process_index}, slice: {process_slice}")
 
         completion_ids = completion_ids[process_slice]
         completion_messages = completion_messages[process_slice]
         completion_mask = completion_mask[process_slice]
+        logger.debug(f"Sliced completions for this process, length: {len(completion_ids)}")
 
         # Pad + mask after per-sequence EOS tokens
-        completion_ids = [torch.tensor(ids, device=device) for ids in completion_ids]
-        completion_ids = pad(completion_ids, padding_value=self.processing_class.pad_token_id) # type: ignore
+        try:
+            logger.debug("Converting completion_ids to tensors and padding")
+            completion_ids = [torch.tensor(ids, device=device) for ids in completion_ids]
+            completion_ids = pad(completion_ids, padding_value=self.processing_class.pad_token_id) # type: ignore
+            logger.debug(f"Padded completion_ids shape: {completion_ids.shape}")
 
-        completion_mask = [torch.tensor(mask, device=device) for mask in completion_mask]
-        completion_mask = pad(completion_mask, padding_value=0)
+            logger.debug("Converting completion_mask to tensors and padding")
+            completion_mask = [torch.tensor(mask, device=device) for mask in completion_mask]
+            completion_mask = pad(completion_mask, padding_value=0)
+            logger.debug(f"Padded completion_mask shape: {completion_mask.shape}")
 
-        prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
-        attention_mask = torch.cat([prompt_mask, completion_mask], dim=1) # (B, P+C)
-        
-        logits_to_keep = completion_ids.size(1)
+            logger.debug("Concatenating prompt and completion tensors")
+            prompt_completion_ids = torch.cat([prompt_ids, completion_ids], dim=1)
+            attention_mask = torch.cat([prompt_mask, completion_mask], dim=1) # (B, P+C)
+            logger.debug(f"Combined prompt_completion_ids shape: {prompt_completion_ids.shape}")
+            
+            logits_to_keep = completion_ids.size(1)
+            logger.debug(f"logits_to_keep: {logits_to_keep}")
+        except Exception as e:
+            logger.error(f"Error during tensor conversion and padding: {str(e)}", exc_info=True)
+            raise
 
         with torch.no_grad():
-            # When using num_iterations == 1, old_per_token_logps == per_token_logps, so we can skip it's
-            # computation here, and use per_token_logps.detach() instead.
-            if self.num_iterations > 1:
-                old_per_token_logps = self._get_per_token_logps(
-                    self.model, prompt_completion_ids, attention_mask, logits_to_keep
-                )
-            else:
-                old_per_token_logps = None
-
-            if self.beta == 0.0:
-                ref_per_token_logps = None
-            elif self.ref_model is not None:
-                ref_per_token_logps = self._get_per_token_logps(
-                    self.ref_model, prompt_completion_ids, attention_mask, logits_to_keep
-                )
-            else:
-                with self.accelerator.unwrap_model(self.model).disable_adapter():
-                    ref_per_token_logps = self._get_per_token_logps(
+            logger.debug("Computing token log probabilities")
+            try:
+                # When using num_iterations == 1, old_per_token_logps == per_token_logps, so we can skip it's
+                # computation here, and use per_token_logps.detach() instead.
+                if self.num_iterations > 1:
+                    logger.debug("Multiple iterations detected, computing old_per_token_logps")
+                    old_per_token_logps = self._get_per_token_logps(
                         self.model, prompt_completion_ids, attention_mask, logits_to_keep
                     )
+                    logger.debug("Successfully computed old_per_token_logps")
+                else:
+                    logger.debug("Single iteration detected, skipping old_per_token_logps computation")
+                    old_per_token_logps = None
+
+                if self.beta == 0.0:
+                    logger.debug("Beta=0, skipping reference model")
+                    ref_per_token_logps = None
+                elif self.ref_model is not None:
+                    logger.debug("Using separate reference model")
+                    ref_per_token_logps = self._get_per_token_logps(
+                        self.ref_model, prompt_completion_ids, attention_mask, logits_to_keep
+                    )
+                    logger.debug("Successfully computed ref_per_token_logps with reference model")
+                else:
+                    logger.debug("Using main model with adapter disabled as reference")
+                    with self.accelerator.unwrap_model(self.model).disable_adapter():
+                        ref_per_token_logps = self._get_per_token_logps(
+                            self.model, prompt_completion_ids, attention_mask, logits_to_keep
+                        )
+                    logger.debug("Successfully computed ref_per_token_logps with adapter disabled")
+            except Exception as e:
+                logger.error(f"Error during token log probabilities computation: {str(e)}", exc_info=True)
+                raise
 
         # use message dicts for reward function inputs
         completions = completion_messages

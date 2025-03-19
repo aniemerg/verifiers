@@ -11,6 +11,7 @@ def setup_logging(
     level: str = "INFO",
     log_format: Optional[str] = None,
     date_format: Optional[str] = None,
+    log_file: Optional[str] = None,
 ) -> None:
     """
     Setup basic logging configuration for the verifiers package.
@@ -19,23 +20,59 @@ def setup_logging(
         level: The logging level to use. Defaults to "INFO".
         log_format: Custom log format string. If None, uses default format.
         date_format: Custom date format string. If None, uses default format.
+        log_file: Optional file path to save logs to (in addition to stderr).
     """
     if log_format is None:
         log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     if date_format is None:
         date_format = "%Y-%m-%d %H:%M:%S"
 
+    formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
+    
     # Create a StreamHandler that writes to stderr
-    handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(logging.Formatter(fmt=log_format, datefmt=date_format))
+    console_handler = logging.StreamHandler(sys.stderr)
+    console_handler.setFormatter(formatter)
 
     # Get the root logger for the verifiers package
     logger = logging.getLogger("verifiers")
     logger.setLevel(level.upper())
-    logger.addHandler(handler)
+    logger.addHandler(console_handler)
+    
+    # Add file handler if log_file is specified
+    if log_file:
+        try:
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+            logger.info(f"Logging to file: {log_file}")
+        except Exception as e:
+            logger.error(f"Failed to setup file logging to {log_file}: {str(e)}")
 
     # Prevent the logger from propagating messages to the root logger
-    logger.propagate = False 
+    logger.propagate = False
+    
+    # Log info about logging setup
+    logger.info(f"Logging initialized at level {level}")
+    
+def get_logger(name: str, level: Optional[str] = None) -> logging.Logger:
+    """
+    Get a logger with the specified name.
+    
+    Args:
+        name: The name of the logger, will be prefixed with 'verifiers.'
+        level: Optional specific level for this logger
+        
+    Returns:
+        A Logger instance
+    """
+    if not name.startswith("verifiers."):
+        name = f"verifiers.{name}"
+        
+    logger = logging.getLogger(name)
+    if level is not None:
+        logger.setLevel(level.upper())
+    
+    return logger
 
 
 def print_prompt_completions_sample(
