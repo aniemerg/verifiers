@@ -104,14 +104,28 @@ args = vf.get_default_grpo_config(
 )
 ```
 
-## Example Script
+## Example Scripts
 
-See the example script in `verifiers/examples/mock_trainer_demo.py` for a complete demonstration.
+We provide two example scripts that demonstrate the mock trainer:
+
+### 1. Basic ToolEnv Example
+
+See the example script in `verifiers/examples/mock_trainer_demo.py` for a demonstration with ToolEnv and calculator.
 
 Run it with:
 
 ```bash
 OPENAI_API_KEY=your_key_here python -m verifiers.examples.mock_trainer_demo
+```
+
+### 2. SmolaToolEnv Example
+
+See the example script in `verifiers/examples/mock_smola_tool_demo.py` for a demonstration with SmolaToolEnv and a Python interpreter tool.
+
+Run it with:
+
+```bash
+OPENAI_API_KEY=your_key_here python -m verifiers.examples.mock_smola_tool_demo
 ```
 
 ## Limitations

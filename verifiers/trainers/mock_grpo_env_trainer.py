@@ -120,16 +120,25 @@ class MockGRPOEnvTrainer:
         if dataset is None:
             return None
         
-        end_idx = min(start_idx + batch_size, len(dataset))
-        if start_idx >= end_idx:
-            # Wrap around to the beginning
-            start_idx = 0
-            end_idx = min(batch_size, len(dataset))
+        # Ensure we're working with valid indexes
+        dataset_size = len(dataset)
+        start_idx = min(start_idx, dataset_size - 1)
         
-        batch = dataset.select(range(start_idx, end_idx))
+        # Calculate end index, ensuring we don't exceed dataset size
+        end_idx = min(start_idx + batch_size, dataset_size)
+        
+        # Handle wrap-around if necessary
+        if start_idx >= dataset_size - 1 or start_idx >= end_idx:
+            start_idx = 0
+            end_idx = min(batch_size, dataset_size)
+        
+        # Select the batch using the correct range
+        indexes = list(range(start_idx, end_idx))
+        batch = dataset.select(indexes)
+        
+        # Extract prompts and additional fields
         prompts = [example["prompt"] for example in batch]
         
-        # Handle additional fields for reward functions
         additional_fields = {}
         for key in batch.features.keys():
             if key != "prompt":
@@ -172,9 +181,10 @@ class MockGRPOEnvTrainer:
                 # Import rich components at function level to avoid issues
                 from rich.panel import Panel as RichPanel
                 from rich.text import Text as RichText
+                # Format prompt content for display - only show the user's query, not previous context
                 
-                # Format prompt content for display
-                if isinstance(prompt, list) and isinstance(prompt[-1], dict):
+                if isinstance(prompt, list) and len(prompt) > 0:
+                    # Find the last user message that isn't part of a few-shot example
                     prompt_text = prompt[-1].get("content", "")
                 elif isinstance(prompt, str):
                     prompt_text = prompt
@@ -335,7 +345,7 @@ class MockGRPOEnvTrainer:
                 return metrics
                 
             prompts = batch["prompts"]
-            
+
             # Run generation through the environment
             results = self.env.generate(prompts, self.llm, self.sampling_params)
             
