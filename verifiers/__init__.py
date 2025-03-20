@@ -6,6 +6,7 @@ from .envs.simple_env import SimpleEnv
 from .envs.tool_env import ToolEnv
 from .envs.smola_tool_env import SmolaToolEnv
 from .trainers.grpo_env_trainer import GRPOEnvTrainer
+from .trainers.mock_grpo_env_trainer import MockGRPOEnvTrainer
 from .utils.data_utils import extract_boxed_answer, extract_hash_answer, preprocess_dataset
 from .utils.model_utils import get_model, get_tokenizer, get_model_and_tokenizer
 from .utils.config_utils import get_default_grpo_config
@@ -17,6 +18,10 @@ __version__ = "0.1.0"
 # Setup default logging configuration
 setup_logging()
 
+def get_mock_grpo_env_trainer(*args, **kwargs):
+    """Helper function to create a mock trainer for testing environments."""
+    return MockGRPOEnvTrainer(*args, **kwargs)
+
 __all__ = [
     "Environment",
     "CodeEnv",
@@ -26,6 +31,8 @@ __all__ = [
     "ToolEnv",
     "SmolaToolEnv",
     "GRPOEnvTrainer",
+    "MockGRPOEnvTrainer",
+    "get_mock_grpo_env_trainer",
     "get_model",
     "get_tokenizer",
     "get_model_and_tokenizer",

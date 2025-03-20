@@ -3,21 +3,19 @@ Demo showing how to use the mock LLM with OpenAI API in MultiStepEnv.
 This demonstrates how to run the MultiStepEnv with OpenAI models instead of vLLM.
 
 Usage:
-    OPENAI_API_KEY=<your-api-key> python examples/openai_multistep_demo.py
+    OPENAI_API_KEY=<your-api-key> python -m verifiers.examples.openai_multistep_demo
 
 The mock implementation allows running the verifiers package on macOS or other
 environments where vLLM might not be available.
 """
 import os
-import sys
 from typing import List, Dict, Any
-
-# Add the parent directory to the Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from openai import OpenAI
 from verifiers.imports import LLM, SamplingParams
-from verifiers.envs.simple_env import SimpleEnv
+from verifiers.envs.tool_env import ToolEnv
+from verifiers.tools.calculator import calculator
+from verifiers.prompts.few_shots import CALCULATOR_FEW_SHOT
 
 
 def main():
@@ -27,7 +25,7 @@ def main():
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         print("Error: OPENAI_API_KEY not set in environment")
-        print("Usage: OPENAI_API_KEY=<your-api-key> python examples/openai_multistep_demo.py")
+        print("Usage: OPENAI_API_KEY=<your-api-key> python -m verifiers.examples.openai_multistep_demo")
         return
     
     # Initialize OpenAI client
@@ -48,16 +46,20 @@ def main():
         max_tokens=200
     )
     
-    # Initialize simple environment (from verifiers.envs.simple_env)
-    env = SimpleEnv(system_prompt="You are a helpful assistant.")
+    # Initialize ToolEnv with calculator tool
+    env = ToolEnv(
+        tools=[calculator],
+        few_shot=CALCULATOR_FEW_SHOT[0],
+        max_steps=3
+    )
     
-    # Create a test prompt
+    # Create a test prompt with a math problem
     prompt = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Explain the concept of reinforcement learning in 3 sentences."}
+        {"role": "system", "content": env.system_prompt},
+        {"role": "user", "content": "If I have 5 apples and eat 2, then buy 3 more, how many do I have?"}
     ]
     
-    print("Running demo with OpenAI API and MultiStepEnv...")
+    print("Running demo with OpenAI API and ToolEnv...")
     print("Sending prompt:", prompt[1]["content"])
     print()
     
@@ -76,26 +78,26 @@ def main():
     # Demo the API-based evaluation
     print("\nRunning API-based evaluation demo...")
     
-    # Create a simple dataset
+    # Create a simple dataset for testing
     from datasets import Dataset
     
     test_data = {
         "prompt": [
             [
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "What is machine learning?"}
+                {"role": "system", "content": env.system_prompt},
+                {"role": "user", "content": "What is 25 * 17?"}
             ],
             [
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "Explain neural networks simply."}
+                {"role": "system", "content": env.system_prompt},
+                {"role": "user", "content": "If I have 120 dollars and spend 45, then earn 20 more, how much do I have?"}
             ]
         ],
-        "answer": ["A type of AI", "Simplified computing"]
+        "answer": ["425", "95"]
     }
     
     env.eval_dataset = Dataset.from_dict(test_data)
     
-    # Run API-based evaluation (requires rubric implementation)
+    # Run API-based evaluation
     try:
         rewards = env.eval_api(
             client=client,

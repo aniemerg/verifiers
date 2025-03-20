@@ -36,14 +36,22 @@ sampling_params = SamplingParams(
     max_tokens=200
 )
 
-# Use with any environment that extends MultiStepEnv
-from verifiers.envs.simple_env import SimpleEnv
-env = SimpleEnv()
+# Use with ToolEnv which extends MultiStepEnv
+from verifiers.envs.tool_env import ToolEnv
+from verifiers.tools.calculator import calculator
+from verifiers.prompts.few_shots import CALCULATOR_FEW_SHOT
 
-# Create a prompt
+# Initialize ToolEnv with calculator tool
+env = ToolEnv(
+    tools=[calculator],
+    few_shot=CALCULATOR_FEW_SHOT[0],
+    max_steps=3
+)
+
+# Create a prompt with a math problem
 prompt = [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "What is machine learning?"}
+    {"role": "system", "content": env.system_prompt},
+    {"role": "user", "content": "What is 25 * 17?"}
 ]
 
 # Generate completions
@@ -89,7 +97,13 @@ OPENAI_API_KEY=your_key_here python tests/test_mock_vllm.py
 
 ## Example Script
 
-See the example script in `examples/openai_multistep_demo.py` for a complete demonstration.
+See the example script in `verifiers/examples/openai_multistep_demo.py` for a complete demonstration.
+
+Run it with:
+
+```bash
+OPENAI_API_KEY=your_key_here python -m verifiers.examples.openai_multistep_demo
+```
 
 ## API-Based Evaluation
 
