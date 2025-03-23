@@ -80,8 +80,43 @@ torchrun --nproc_per_node=[N-1] script.py
 - [X] Environments: `SimpleEnv`, `MathEnv`, `DoubleCheckEnv`, `CodeEnv`, `ToolEnv`
 - [X] Multi-step execution in `CodeEnv` and `ToolEnv`
 - [X] Dataset formatting + XML parsers
-- [X] Basic ubrics for math/code correctness + formatting
+- [X] Basic rubrics for math/code correctness + formatting
 - [X] Defaults for GRPO, model, tokenizer, etc.
+- [X] SmolAgents integration for advanced agent workflows
+
+## SmolAgents Integration
+
+The repository includes integration with [SmolAgents](https://github.com/huggingface/smolagents), allowing you to use SmolAgents' powerful agent architecture within the Verifiers training framework.
+
+```python
+# Import SmolAgents integration components
+from verifiers.agents import VerifiersModelAdapter, VerifiersToolAgent, SmolAgentEnv
+from verifiers.agents.tool_adapter import create_calculator_tool
+
+# Create tools
+tools = [create_calculator_tool()]
+
+# Create model adapter
+model_adapter = VerifiersModelAdapter()
+
+# Create an agent environment
+agent_env = SmolAgentEnv(
+    tools=tools,
+    max_steps=10
+)
+
+# Use with GRPOEnvTrainer
+trainer = GRPOEnvTrainer(
+    llm=llm,
+    env=agent_env,
+    # ... other trainer parameters
+)
+
+# Train the model
+trainer.train(prompts=prompts)
+```
+
+See the `examples/gsm8k_smol_agent.py` and `examples/gsm8k_smol_agent_training.py` for complete examples.
 
 ## Roadmap
 

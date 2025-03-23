@@ -21,3 +21,10 @@ dependencies = [
     "vllm>=0.7.3",
     "brave-search>=0.1.8",
 ]
+
+[project.optional-dependencies]
+smolagents = [
+    # Add as editable local dependency when available:
+    # This will be installed with: pip install -e ".[smolagents]"
+    # "./wip/smolagents"
+]
