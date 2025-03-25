@@ -11,7 +11,7 @@ import numpy as np
 from datasets import Dataset, IterableDataset
 from openai import OpenAI
 
-from verifiers.imports import LLM, SamplingParams
+from verifiers.mock_vllm import LLM, SamplingParams
 from verifiers.envs.environment import Environment
 
 
