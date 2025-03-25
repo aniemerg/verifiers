@@ -1,5 +1,7 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+import os
 import platform
+import yaml
 
 # Check if we're on macOS (Darwin)
 IS_MACOS = platform.system() == 'Darwin'
@@ -101,4 +103,23 @@ def get_default_grpo_config(run_name: str,
 
 # Use MockGRPOConfig as the GRPOConfig type on macOS
 GRPOConfig = MockGRPOConfig if IS_MACOS or not REAL_CONFIG_AVAILABLE else TRLGRPOConfig
+
+
+def load_config(config_path: str) -> Dict[str, Any]:
+    """
+    Load configuration from a YAML file.
+    
+    Args:
+        config_path: Path to the YAML configuration file
+        
+    Returns:
+        A dictionary containing the configuration
+    """
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+        
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+        
+    return config
 
