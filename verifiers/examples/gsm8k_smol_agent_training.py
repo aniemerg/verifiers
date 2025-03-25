@@ -15,7 +15,8 @@ from typing import Dict, List, Any, Callable
 sys.path.append('/Users/allanniemerg/dev/verifiers/wip/smolagents')
 
 # Import Verifiers components
-from verifiers.imports import load_dataset, vllm_llm_factory
+from verifiers.imports import load_dataset
+import verifiers as vf
 from verifiers.trainers.grpo_env_trainer import GRPOEnvTrainer
 from verifiers.utils.config_utils import load_config
 
@@ -194,27 +195,43 @@ def train(config):
     # Create reward weights
     reward_weights = [0.4, 0.3, 0.3]
     
-    # Create LLM with specified model
+    # Load model and tokenizer
     model_name = "Qwen/Qwen2.5-1.5B-Instruct"
-    llm = vllm_llm_factory(model_name=model_name)
+    model, tokenizer = vf.get_model_and_tokenizer(model_name)
+    
+    # Create training args
+    run_name = "gsm8k_smol_" + model_name.split("/")[-1].lower()
+    training_args = vf.get_default_grpo_config(
+        run_name=run_name,
+        num_gpus=1,
+        reward_weights=reward_weights,
+        max_steps=config.get("max_steps", 1000)
+    )
+    
+    # Configure training parameters from config
+    training_args.per_device_train_batch_size = config.get("batch_size", 4)
+    training_args.learning_rate = config.get("lr", 5e-6)
+    training_args.beta = config.get("kl_coef", 0.1)
+    training_args.num_generations = 2  # Use fewer generations for single GPU
+    
+    # Create dataset from prompts
+    from datasets import Dataset
+    train_dataset = Dataset.from_dict({
+        "prompt": prompts[:100]  # Use a smaller subset for testing
+    })
     
     # Create trainer
     trainer = GRPOEnvTrainer(
-        llm=llm,
+        model=model,
+        processing_class=tokenizer,
         env=env,
-        n_epochs=config.get("n_epochs", 3),
-        batch_size=config.get("batch_size", 8),
-        lr=config.get("lr", 5e-6),
-        reward_fn=reward_funcs,
-        reward_weights=reward_weights,
-        kl_coef=config.get("kl_coef", 0.1),
-        checkpoint_dir=config.get("checkpoint_dir", "./checkpoints"),
-        save_best=True
+        reward_funcs=reward_funcs,
+        args=training_args,
+        train_dataset=train_dataset
     )
     
     # Train the model
     trainer.train(
-        prompts=prompts,
         reward_fn_kwargs={"examples": examples, "env": env}
     )
 
