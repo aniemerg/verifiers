@@ -1,0 +1,17 @@
+compute_environment: LOCAL_MACHINE
+debug: false
+distributed_type: NO
+mixed_precision: bf16
+num_machines: 1
+num_processes: 1
+use_cpu: false
+
+# Training parameters
+dataset_split: "train"
+max_examples: 100  # Start with a small number for testing
+n_epochs: 1
+batch_size: 4  # Lower batch size for single GPU
+lr: 5e-6
+kl_coef: 0.1
+max_steps: 8  # Limit max steps in SmolAgentEnv
+checkpoint_dir: "./checkpoints/gsm8k_smol_agent"

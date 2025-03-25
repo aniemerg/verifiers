@@ -194,8 +194,9 @@ def train(config):
     # Create reward weights
     reward_weights = [0.4, 0.3, 0.3]
     
-    # Create LLM
-    llm = vllm_llm_factory()
+    # Create LLM with specified model
+    model_name = "Qwen/Qwen2.5-1.5B-Instruct"
+    llm = vllm_llm_factory(model_name=model_name)
     
     # Create trainer
     trainer = GRPOEnvTrainer(
