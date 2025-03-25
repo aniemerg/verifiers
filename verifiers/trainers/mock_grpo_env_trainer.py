@@ -233,16 +233,23 @@ class MockGRPOEnvTrainer:
             print("Completion:", completion)
             print("Reward:", reward)
     
-    def train(self):
+    def train(self, reward_fn_kwargs=None):
         """
         Mock training method that runs batches through the environment.
         
+        Args:
+            reward_fn_kwargs: Optional dictionary of additional arguments to pass to reward functions.
+                This matches the real GRPOTrainer interface.
+                
         Returns:
             Dict with training metrics
         """
         if not self.train_dataset:
             print("No dataset provided, nothing to train on")
             return {}
+        
+        # Get reward_fn_kwargs or initialize as empty dict if not provided
+        reward_fn_kwargs = reward_fn_kwargs or {}
         
         print(f"\n=== Starting mock training with {len(self.train_dataset)} examples ===")
         print(f"Batch size: {self.batch_size}, Num generations: {self.num_generations}")
@@ -278,7 +285,11 @@ class MockGRPOEnvTrainer:
                 avg_per_func = []
                 
                 for reward_func in self.reward_funcs:
-                    kwargs = batch["additional_fields"]
+                    # Combine batch additional fields with reward_fn_kwargs
+                    kwargs = batch["additional_fields"].copy()
+                    kwargs.update(reward_fn_kwargs)
+                    
+                    # Calculate rewards with combined kwargs
                     rewards = reward_func(prompts=prompts, completions=results["messages"], **kwargs)
                     all_rewards.append(rewards)
                     avg_per_func.append(sum(rewards) / len(rewards))
@@ -302,7 +313,7 @@ class MockGRPOEnvTrainer:
                 
                 # Run evaluation occasionally
                 if step % self.eval_steps == 0 and step > 0:
-                    eval_results = self.evaluate()
+                    eval_results = self.evaluate(reward_fn_kwargs=reward_fn_kwargs)
                 
                 # Simulate a brief pause for realism
                 time.sleep(0.1)
@@ -321,10 +332,14 @@ class MockGRPOEnvTrainer:
         
         return metrics
     
-    def evaluate(self):
+    def evaluate(self, reward_fn_kwargs=None):
         """
         Run evaluation on the eval dataset.
         
+        Args:
+            reward_fn_kwargs: Optional dictionary of additional arguments to pass to reward functions.
+                This matches the real GRPOTrainer interface.
+                
         Returns:
             Dict with evaluation metrics
         """
@@ -354,7 +369,11 @@ class MockGRPOEnvTrainer:
             avg_per_func = []
             
             for reward_func in self.reward_funcs:
-                kwargs = batch["additional_fields"]
+                # Combine batch additional fields with reward_fn_kwargs
+                kwargs = batch["additional_fields"].copy()
+                if reward_fn_kwargs:
+                    kwargs.update(reward_fn_kwargs)
+                
                 rewards = reward_func(prompts=prompts, completions=results["messages"], **kwargs)
                 all_rewards.append(rewards)
                 avg_per_func.append(sum(rewards) / len(rewards) if rewards else 0.0)

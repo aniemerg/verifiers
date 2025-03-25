@@ -120,7 +120,9 @@ def create_calculator_tool() -> SmolTool:
         A SmolAgents Tool for mathematical calculations.
     """
     class CalculatorTool(SmolTool):
-        def setup(self):
+        def __init__(self):
+            super().__init__()
+            # Set mandatory attributes directly in __init__ to prevent validation errors
             self.name = "calculator"
             self.description = "A tool for evaluating mathematical expressions"
             self.inputs = {
@@ -131,6 +133,10 @@ def create_calculator_tool() -> SmolTool:
                 }
             }
             self.output_type = "number"
+            
+        def setup(self):
+            # Setup is called when the tool is first used
+            pass
         
         def forward(self, expression: str) -> Union[int, float, str]:
             """
@@ -178,7 +184,9 @@ def create_search_tool() -> SmolTool:
         A SmolAgents Tool for searching.
     """
     class SearchTool(SmolTool):
-        def setup(self):
+        def __init__(self):
+            super().__init__()
+            # Set mandatory attributes directly in __init__ to prevent validation errors
             self.name = "search"
             self.description = "A tool for searching the web for information"
             self.inputs = {
@@ -194,6 +202,10 @@ def create_search_tool() -> SmolTool:
                 }
             }
             self.output_type = "string"
+            
+        def setup(self):
+            # Setup is called when the tool is first used
+            pass
         
         def forward(self, query: str, max_results: int = 3) -> str:
             """

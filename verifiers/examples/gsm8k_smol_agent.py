@@ -40,7 +40,8 @@ def load_gsm8k_examples(split="train", max_examples=100):
     Returns:
         List of examples with question and answer.
     """
-    dataset = load_dataset("gsm8k", split=split)
+    # Specify the 'main' config for GSM8K
+    dataset = load_dataset("gsm8k", "main", split=split)
     
     examples = []
     for i, example in enumerate(dataset):

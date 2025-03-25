@@ -73,17 +73,26 @@ class VerifiersToolAgent(ToolCallingAgent):
             max_steps: Maximum number of steps to take.
             **kwargs: Additional arguments to pass to the parent class.
         """
-        # Create Verifiers-specific prompt templates if not provided
-        verifiers_templates = prompt_templates or self._create_verifiers_templates()
+        logger.debug("VerifiersToolAgent initializing with %d tools", len(tools))
         
-        # Initialize the parent class
+        # Store tools locally for template creation
+        self._tools_list = tools
+        
+        # First initialize parent class to set up self.tools
         super().__init__(
             tools=tools,
             model=model,
-            prompt_templates=verifiers_templates,
+            prompt_templates=None,  # Set to None initially
             max_steps=max_steps,
             **kwargs
         )
+        
+        # Now create templates (after self.tools is set up by parent)
+        if prompt_templates is None:
+            logger.debug("Creating custom templates with %d tools", len(self.tools))
+            self.prompt_templates = self._create_verifiers_templates()
+        else:
+            self.prompt_templates = prompt_templates
         
         # Create a parser for extracting structured content
         self.parser = VerifiersAgentParser(fields=["reasoning", "tool_call", "answer"])

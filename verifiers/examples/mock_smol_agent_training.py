@@ -38,6 +38,10 @@ try:
     from verifiers.examples.gsm8k_smol_agent import load_gsm8k_examples, prepare_message
     logger.debug("GSM8K utility functions imported successfully")
     
+    # Import datasets module for Dataset creation
+    from datasets import Dataset
+    logger.debug("Datasets library imported successfully")
+    
     HAS_SMOLAGENTS = True
 except ImportError as e:
     HAS_SMOLAGENTS = False
@@ -168,6 +172,13 @@ def main():
     prompts = [prepare_message(example) for example in examples]
     small_prompts = prompts[:5]  # Just use 5 examples for the demo
     
+    # Convert the list of prompts to a Dataset object
+    train_dataset = Dataset.from_dict({
+        "prompt": small_prompts,
+        "example_idx": list(range(len(small_prompts)))
+    })
+    logger.debug(f"Created Dataset with {len(train_dataset)} examples")
+    
     print("Creating mock training configuration...")
     # Create a mock training config
     args = vf.get_default_grpo_config(
@@ -195,7 +206,7 @@ def main():
         reward_funcs=reward_funcs,
         reward_weights=[0.7, 0.3],  # More weight on answer correctness
         args=args,
-        train_dataset=small_prompts,  # Just use the prompts directly
+        train_dataset=train_dataset,  # Use the Dataset object we created
         openai_model="gpt-3.5-turbo",  # Specify which OpenAI model to use
         temperature=0.7,
         max_tokens=300

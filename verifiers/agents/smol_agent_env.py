@@ -51,6 +51,75 @@ class SmolAgentEnv(MultiStepEnv):
     and multiple parallel agents.
     """
     
+    def get_rubric(self, **kwargs: Any) -> List[Any]:
+        """
+        Get the default reward functions for this environment.
+        
+        Args:
+            **kwargs: Additional arguments.
+            
+        Returns:
+            List of reward functions.
+        """
+        # Define a simple reward function that checks for answer tags
+        def answer_presence(prompts, completions, **kwargs):
+            import re
+            rewards = []
+            
+            for completion in completions:
+                # Look for answer tags in the completion
+                has_answer = False
+                for message in completion:
+                    if message["role"] == "assistant":
+                        if re.search(r"<answer>(.*?)</answer>", message["content"], re.DOTALL):
+                            has_answer = True
+                            break
+                
+                # Give reward if an answer is present
+                if has_answer:
+                    rewards.append(1.0)
+                else:
+                    rewards.append(0.0)
+            
+            return rewards
+        
+        # Return a list of reward functions
+        return [answer_presence]
+    
+    def get_dataset(self, **kwargs: Any) -> Any:
+        """
+        Get a default dataset for this environment.
+        
+        This is a required abstract method from MultiStepEnv.
+        For actual training, you should provide your own dataset.
+        
+        Args:
+            **kwargs: Additional arguments.
+            
+        Returns:
+            A simple dataset (list of prompts).
+        """
+        # Try to load the GSM8K dataset if available
+        try:
+            from datasets import load_dataset
+            dataset = load_dataset("gsm8k", "main", split="train")
+            # Just return a small subset
+            return dataset.select(range(min(100, len(dataset))))
+        except Exception as e:
+            logger.warning(f"Could not load GSM8K dataset: {e}")
+            
+            # Return a minimal dataset if loading fails
+            return [
+                [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "What is 2+2?"}
+                ],
+                [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "What is 3*4?"}
+                ]
+            ]
+    
     def __init__(
         self, 
         tools: List[Tool] = None,
