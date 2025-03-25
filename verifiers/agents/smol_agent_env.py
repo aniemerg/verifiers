@@ -7,18 +7,29 @@ particularly for GRPO training.
 """
 
 import sys
+import os
 import copy
 import logging
 from typing import Any, Dict, List, Sequence, Optional, Union, Callable, Tuple
 
-# Add smolagents to path if needed
-sys.path.append('/Users/allanniemerg/dev/verifiers/wip/smolagents')
+# Setup logger
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Add smolagents src directory to path
+logger.debug("Adding SmolAgents src directory to path")
+sys.path.insert(0, '/Users/allanniemerg/dev/verifiers/wip/smolagents/src')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../wip/smolagents/src')))
 
 # Import SmolAgents classes
 try:
-    from smolagents.tools.tool import Tool
-except ImportError:
-    raise ImportError("SmolAgents not found. Make sure it's installed and in the Python path.")
+    # Import from correct path based on actual structure
+    from smolagents.tools import Tool
+    logger.debug("Successfully imported Tool class from smolagents.tools")
+except ImportError as e:
+    error_msg = f"SmolAgents not found. Error: {str(e)}. Python path: {sys.path}"
+    logger.error(error_msg)
+    raise ImportError(error_msg)
 
 # Import Verifiers classes
 from verifiers.envs.multistep_env import MultiStepEnv

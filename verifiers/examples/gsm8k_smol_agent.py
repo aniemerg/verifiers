@@ -10,8 +10,14 @@ import sys
 import logging
 from typing import Dict, List, Any
 
-# Add smolagents to path if needed
-sys.path.append('/Users/allanniemerg/dev/verifiers/wip/smolagents')
+# Setup logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Add smolagents src directory to path
+logger.debug("Adding SmolAgents src directory to path")
+sys.path.insert(0, '/Users/allanniemerg/dev/verifiers/wip/smolagents/src')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../wip/smolagents/src')))
 
 # Import Verifiers components
 from verifiers.imports import load_dataset, vllm_llm_factory

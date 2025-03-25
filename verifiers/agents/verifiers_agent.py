@@ -7,23 +7,40 @@ Verifiers' GRPO training system.
 """
 
 import sys
+import os
 import json
 import logging
 import time
 import copy
 from typing import Any, Dict, List, Optional, Union, Callable
 
-# Add smolagents to path if needed
-sys.path.append('/Users/allanniemerg/dev/verifiers/wip/smolagents')
+# Setup logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Add smolagents src directory to path
+logger.debug("Adding SmolAgents src directory to path")
+sys.path.insert(0, '/Users/allanniemerg/dev/verifiers/wip/smolagents/src')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../wip/smolagents/src')))
 
 # Import SmolAgents classes
 try:
-    from smolagents.agents import ToolCallingAgent, AgentError, AgentParsingError, AgentExecutionError
-    from smolagents.types import ChatMessage, ActionStep, ToolCall
-    from smolagents.types import PromptTemplates, LogLevel
-    from smolagents.tools.tool import Tool
-except ImportError:
-    raise ImportError("SmolAgents not found. Make sure it's installed and in the Python path.")
+    # Import from correct paths based on actual structure
+    from smolagents.agents import ToolCallingAgent
+    from smolagents.memory import ActionStep, ToolCall
+    from smolagents.models import ChatMessage
+    from smolagents.monitoring import LogLevel
+    from smolagents.tools import Tool
+    from smolagents.utils import AgentError, AgentParsingError, AgentExecutionError
+    
+    # PromptTemplates is likely just a Dict type
+    from typing import Dict as PromptTemplates
+    
+    logger.debug("Successfully imported all required SmolAgents classes")
+except ImportError as e:
+    error_msg = f"SmolAgents not found. Error: {str(e)}. Python path: {sys.path}"
+    logger.error(error_msg)
+    raise ImportError(error_msg)
 
 from .agent_parser import VerifiersAgentParser
 from .model_adapter import VerifiersModelAdapter

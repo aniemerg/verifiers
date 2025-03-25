@@ -10,18 +10,46 @@ from typing import Any, Dict, List, Optional, Union
 import json
 import logging
 import sys
+import os
 import copy
 
-# Add smolagents to path if needed
-sys.path.append('/Users/allanniemerg/dev/verifiers/wip/smolagents')
+# Setup logging first
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Add smolagents src directory to path
+sys.path.insert(0, '/Users/allanniemerg/dev/verifiers/wip/smolagents/src')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../wip/smolagents/src')))
+
+# Also check if installed smolagents exists in site-packages
+try:
+    import importlib.util
+    smolagents_spec = importlib.util.find_spec("smolagents")
+    if smolagents_spec:
+        logger.debug(f"Found installed smolagents at {smolagents_spec.origin}")
+except Exception as e:
+    logger.debug(f"Error checking for installed smolagents: {e}")
 
 # Import SmolAgents classes
 try:
-    from smolagents.types import ChatMessage, ChatMessageToolCall, ChatMessageToolCallDefinition
-    from smolagents.models.model import Model
-    from smolagents.tools.tool import Tool
-except ImportError:
-    raise ImportError("SmolAgents not found. Make sure it's installed and in the Python path.")
+    logger.debug("Attempting to import SmolAgents modules...")
+    logger.debug(f"Python path: {sys.path}")
+    
+    # First try to import the base module to check if it's accessible
+    import smolagents
+    logger.debug(f"SmolAgents imported successfully from {smolagents.__file__}")
+    
+    # Now import the specific classes - with correct paths based on actual structure
+    from smolagents.models import ChatMessage, ChatMessageToolCall, ChatMessageToolCallDefinition, Model
+    logger.debug("Imported ChatMessage types and Model class")
+    
+    from smolagents.tools import Tool
+    logger.debug("Imported Tool class")
+    
+except ImportError as e:
+    error_msg = f"SmolAgents not found. Error: {str(e)}. Python path: {sys.path}"
+    logger.error(error_msg)
+    raise ImportError(error_msg)
 
 
 class VerifiersModelAdapter(Model):

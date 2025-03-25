@@ -13,20 +13,37 @@ import time
 import logging
 
 # Add smolagents to path if needed
-sys.path.append('/Users/allanniemerg/dev/verifiers/wip/smolagents')
+sys.path.insert(0, '/Users/allanniemerg/dev/verifiers/wip/smolagents')
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../wip/smolagents')))
 
 # Import Verifiers components
 import verifiers as vf
 
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 # Try to import SmolAgents components
 try:
+    logger.debug("Attempting to import SmolAgents components...")
+    import smolagents
+    logger.debug(f"SmolAgents imported successfully from {smolagents.__file__}")
+    
     from verifiers.agents.tool_adapter import create_calculator_tool, create_search_tool
+    logger.debug("Tool adapter imported successfully")
+    
     from verifiers.agents.smol_agent_env import SmolAgentEnv
+    logger.debug("SmolAgentEnv imported successfully")
+    
     from verifiers.examples.gsm8k_smol_agent import load_gsm8k_examples, prepare_message
+    logger.debug("GSM8K utility functions imported successfully")
+    
     HAS_SMOLAGENTS = True
-except ImportError:
+except ImportError as e:
     HAS_SMOLAGENTS = False
-    print("SmolAgents integration not available. Please check if SmolAgents is installed.")
+    logger.error(f"SmolAgents integration not available. Error: {str(e)}")
+    logger.error(f"Python path: {sys.path}")
+    print(f"SmolAgents integration not available. Error: {str(e)}")
 
 
 def create_mock_reward_funcs():
