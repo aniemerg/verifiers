@@ -6,7 +6,8 @@ from typing import List, Dict, Sequence, Any, Union, Tuple
 
 from datasets import Dataset
 from trl.trainer.grpo_trainer import RewardFunc
-from ..imports import LLM, SamplingParams  # type: ignore
+from trl.data_utils import maybe_apply_chat_template
+from ..imports import LLM, SamplingParams, VLLMClient  # type: ignore
 
 from verifiers.envs.environment import Environment
 
@@ -54,72 +55,209 @@ class MultiStepEnv(Environment):
 
     def step(self,
              states: List[Dict[str, Any]],
-             llm: LLM,
-             sampling_params: SamplingParams) -> List[Dict[str, Any]]:
+             vllm_client: Union[VLLMClient, LLM],
+             temperature: float = 1.0,
+             top_p: float = 1.0,
+             top_k: int = -1,
+             min_p: float = 0.0,
+             repetition_penalty: float = 1.0,
+             max_tokens: int = 100,
+             n: int = 1,
+             **kwargs: Any) -> List[Dict[str, Any]]:
         
         live_indices = [i for i, s in enumerate(states) if not s["completed"]]
         messages_to_step = [states[i]["messages"] for i in live_indices]
-        llm_responses = llm.chat(messages_to_step, sampling_params=sampling_params, use_tqdm=False) # type: ignore
-
-        #for i, j in enumerate(live_indices):
-        def update_state(j, llm_response):
-            # sleep for 0-1 seconds to avoid rate limiting
-            time.sleep(self.sleep_time * random.random())
-
-            state = states[j].copy()
-            if len(state["prompt_ids"]) == 0:
-                state["prompt_ids"] = llm_response.prompt_token_ids
-            state["messages"].append({"role": "assistant", "content": llm_response.outputs[0].text})
         
-            # get token lengths of env response and new completion
-            total_prev_len = len(state["prompt_ids"]) + len(state["completion_ids"])
-            env_response_len  = len(list(llm_response.prompt_token_ids)) - total_prev_len # type: ignore
-            new_completion_len = len(llm_response.outputs[0].token_ids)
-
-            # update completion masks
-            state["completion_mask"].extend([self.env_mask] * env_response_len)
-            state["completion_mask"].extend([1] * new_completion_len)
-
-            # update completion ids
-            state["completion_ids"] = list(llm_response.prompt_token_ids) # type: ignore
-            state["completion_ids"].extend(list(llm_response.outputs[0].token_ids))
-            state["completion_ids"] = state["completion_ids"][len(state["prompt_ids"]):]
-
-            if self.is_completed(state["messages"]) or len(state["completion_ids"]) > sampling_params.max_tokens: # type: ignore
-                state["completed"] = True
-                state["completion_ids"] = state["completion_ids"][:sampling_params.max_tokens]
-                state["completion_mask"] = state["completion_mask"][:len(state["completion_ids"])]
-            else:
-                state["messages"].append(self.env_response(state["messages"]))
-
-            if not len(state["completion_mask"]) == len(state["completion_ids"]):
-                print(state["messages"])
-                print(state["completion_mask"])
-                print(state["completion_ids"])
-                raise ValueError(f"Completion mask and completion ids are not the same length for state {j}")
-
-            return j, state
-
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            results = list(executor.map(
-                lambda args: update_state(*args),
-                [(j, llm_responses[i]) for i, j in enumerate(live_indices)]
-            ))
-
+        # Get the tokenizer from kwargs
+        tokenizer = kwargs.get('tokenizer', None)
+        if tokenizer is None:
+            raise ValueError("Tokenizer is required for step method")
+        
+        # Check if we're using VLLMClient or the old LLM interface
+        if isinstance(vllm_client, VLLMClient):
+            # Convert messages to formatted prompt text for VLLMClient
+            prompt_texts = []
+            for messages in messages_to_step:
+                formatted = {"prompt": messages}
+                text = maybe_apply_chat_template(formatted, tokenizer)["prompt"]
+                prompt_texts.append(text)
+            
+            # Generate using VLLMClient.generate()
+            try:
+                completion_ids_list = vllm_client.generate(
+                    prompts=prompt_texts,
+                    n=n,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    min_p=min_p,
+                    repetition_penalty=repetition_penalty,
+                    max_tokens=max_tokens,
+                )
+                
+                def update_state(j, prompt_text, completion_ids):
+                    # sleep for 0-1 seconds to avoid rate limiting
+                    time.sleep(self.sleep_time * random.random())
+                    
+                    state = states[j].copy()
+                    
+                    # Get or create the prompt token IDs
+                    if len(state["prompt_ids"]) == 0:
+                        # Tokenize the prompt text to get token IDs
+                        state["prompt_ids"] = tokenizer.encode(prompt_text)
+                    
+                    # Decode the completion token IDs to text
+                    completion_text = tokenizer.decode(completion_ids)
+                    
+                    # Add the assistant message
+                    state["messages"].append({"role": "assistant", "content": completion_text})
+                    
+                    # Calculate token lengths
+                    total_prev_len = len(state["prompt_ids"]) + len(state["completion_ids"])
+                    
+                    # Check if we're done or need to add environment response
+                    if self.is_completed(state["messages"]) or len(completion_ids) > max_tokens:
+                        state["completed"] = True
+                        
+                        # Update completion IDs and mask
+                        state["completion_ids"] = completion_ids[:max_tokens]
+                        state["completion_mask"] = [1] * len(state["completion_ids"])
+                    else:
+                        # Add environment response
+                        env_response = self.env_response(state["messages"])
+                        state["messages"].append(env_response)
+                        
+                        # Tokenize the env response to get its length
+                        env_response_ids = tokenizer.encode(env_response["content"])
+                        
+                        # Update completion IDs and mask
+                        state["completion_ids"] = completion_ids
+                        state["completion_mask"] = [1] * len(completion_ids)
+                        state["completion_mask"].extend([self.env_mask] * len(env_response_ids))
+                        state["completion_ids"].extend(env_response_ids)
+                    
+                    # Validate that mask and IDs have the same length
+                    if len(state["completion_mask"]) != len(state["completion_ids"]):
+                        print(state["messages"])
+                        print(state["completion_mask"])
+                        print(state["completion_ids"])
+                        raise ValueError(f"Completion mask and completion ids are not the same length for state {j}")
+                    
+                    return j, state
+                
+                # Process results in parallel
+                with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                    results = list(executor.map(
+                        lambda args: update_state(*args),
+                        [(j, prompt_texts[i], completion_ids_list[i]) for i, j in enumerate(live_indices)]
+                    ))
+                
+            except Exception as e:
+                # Log error but don't add complex recovery logic
+                print(f"Error during VLLMClient.generate: {e}")
+                raise
+        else:
+            # Legacy LLM.chat() interface
+            # Create a SamplingParams object
+            sampling_params = SamplingParams(
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                min_p=min_p,
+                repetition_penalty=repetition_penalty,
+                max_tokens=max_tokens,
+                n=n
+            )
+            
+            # Use the old chat interface
+            llm_responses = vllm_client.chat(messages_to_step, sampling_params=sampling_params, use_tqdm=False)
+            
+            def update_state(j, llm_response):
+                # sleep for 0-1 seconds to avoid rate limiting
+                time.sleep(self.sleep_time * random.random())
+                
+                state = states[j].copy()
+                if len(state["prompt_ids"]) == 0:
+                    state["prompt_ids"] = llm_response.prompt_token_ids
+                state["messages"].append({"role": "assistant", "content": llm_response.outputs[0].text})
+            
+                # get token lengths of env response and new completion
+                total_prev_len = len(state["prompt_ids"]) + len(state["completion_ids"])
+                env_response_len = len(list(llm_response.prompt_token_ids)) - total_prev_len
+                new_completion_len = len(llm_response.outputs[0].token_ids)
+                
+                # update completion masks
+                state["completion_mask"].extend([self.env_mask] * env_response_len)
+                state["completion_mask"].extend([1] * new_completion_len)
+                
+                # update completion ids
+                state["completion_ids"] = list(llm_response.prompt_token_ids)
+                state["completion_ids"].extend(list(llm_response.outputs[0].token_ids))
+                state["completion_ids"] = state["completion_ids"][len(state["prompt_ids"]):]
+                
+                if self.is_completed(state["messages"]) or len(state["completion_ids"]) > max_tokens:
+                    state["completed"] = True
+                    state["completion_ids"] = state["completion_ids"][:max_tokens]
+                    state["completion_mask"] = state["completion_mask"][:len(state["completion_ids"])]
+                else:
+                    state["messages"].append(self.env_response(state["messages"]))
+                
+                if not len(state["completion_mask"]) == len(state["completion_ids"]):
+                    print(state["messages"])
+                    print(state["completion_mask"])
+                    print(state["completion_ids"])
+                    raise ValueError(f"Completion mask and completion ids are not the same length for state {j}")
+                
+                return j, state
+            
+            # Process results in parallel
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                results = list(executor.map(
+                    lambda args: update_state(*args),
+                    [(j, llm_responses[i]) for i, j in enumerate(live_indices)]
+                ))
+        
+        # Update states with results
         for j, state in results:
             states[j] = state
-
+        
         return states
 
-    def generate(self, prompts: List[List[Dict[str, Any]]],
-                 llm: LLM,
-                 sampling_params: SamplingParams,
-                 **kwargs: Any) -> Dict[str, List[Sequence[int]] | List[str] |  List[List[Dict[str, Any]]]]:
-        custom_sp = sampling_params.clone()
+    def generate(self, 
+                 prompts: List[List[Dict[str, Any]]],
+                 vllm_client: Union[VLLMClient, LLM],
+                 sampling_params: SamplingParams = None,
+                 **kwargs: Any) -> Dict[str, List[Sequence[int]] | List[str] | List[List[Dict[str, Any]]]]:
+        
+        # Extract parameters from SamplingParams or use defaults
+        if sampling_params:
+            temperature = getattr(sampling_params, 'temperature', 1.0)
+            top_p = getattr(sampling_params, 'top_p', 1.0)
+            top_k = getattr(sampling_params, 'top_k', -1)
+            min_p = getattr(sampling_params, 'min_p', 0.0)
+            repetition_penalty = getattr(sampling_params, 'repetition_penalty', 1.0)
+            max_tokens = getattr(sampling_params, 'max_tokens', 100)
+            n = getattr(sampling_params, 'n', 1)
+        else:
+            temperature = kwargs.get('temperature', 1.0)
+            top_p = kwargs.get('top_p', 1.0)
+            top_k = kwargs.get('top_k', -1)
+            min_p = kwargs.get('min_p', 0.0)
+            repetition_penalty = kwargs.get('repetition_penalty', 1.0)
+            max_tokens = kwargs.get('max_tokens', 100)
+            n = kwargs.get('n', 1)
+        
+        # Apply any custom sampling args
         for k, v in self.sampling_args.items():
-            setattr(custom_sp, k, v)
-
-        # initialize state variables
+            if k == 'temperature': temperature = v
+            elif k == 'top_p': top_p = v
+            elif k == 'top_k': top_k = v
+            elif k == 'min_p': min_p = v
+            elif k == 'repetition_penalty': repetition_penalty = v
+            elif k == 'max_tokens': max_tokens = v
+            elif k == 'n': n = v
+        
+        # Initialize state variables
         all_completed = False
         states = [{
             "messages": m,
@@ -129,21 +267,33 @@ class MultiStepEnv(Environment):
             "completion_ids": [],
             "completion_mask": []
         } for m in prompts]
-
-        # main loop
+        
+        # Main loop
         while not all_completed:
-            states = self.step(states, llm, custom_sp)
+            states = self.step(
+                states, 
+                vllm_client, 
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                min_p=min_p,
+                repetition_penalty=repetition_penalty,
+                max_tokens=max_tokens,
+                n=n,
+                **kwargs
+            )
             all_completed = all(state["completed"] for state in states)
-
+        
+        # Return the completions in the expected format
         completion_messages = [s["messages"][s["prompt_messages"]:] for s in states]
         completion_ids = [s["completion_ids"] for s in states]
         completion_mask = [s["completion_mask"] for s in states]
-        output = {
+        
+        return {
             "ids": completion_ids,
             "messages": completion_messages,
             "mask": completion_mask
         }
-        return output
 
     def step_api(self, 
              client: Any,

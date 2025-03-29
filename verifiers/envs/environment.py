@@ -4,7 +4,7 @@ import logging
 
 from datasets import Dataset
 from trl.trainer.grpo_trainer import RewardFunc
-from ..imports import LLM, SamplingParams  # type: ignore
+from ..imports import LLM, SamplingParams, VLLMClient  # type: ignore
 
 class Environment(ABC):
 
@@ -31,7 +31,7 @@ class Environment(ABC):
     @abstractmethod
     def generate(self,
                  prompts: List[List[Dict[str, Any]]],
-                 llm: LLM,
-                 sampling_params: SamplingParams,
+                 vllm_client: Union[VLLMClient, LLM],  # Allow either VLLMClient or LLM for backward compatibility
+                 sampling_params: SamplingParams = None,  # Make sampling_params optional
                  **kwargs: Any) -> Dict[str, List[Sequence[int]] | List[str] | List[List[Dict[str, Any]]]]:
         pass

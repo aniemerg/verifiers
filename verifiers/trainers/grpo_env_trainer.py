@@ -19,6 +19,7 @@ from trl.trainer.utils import pad
 
 from verifiers.envs.environment import Environment
 from verifiers.utils.logging_utils import print_prompt_completions_sample
+from verifiers.imports import SamplingParams, VLLMClient  # type: ignore
 
 if is_peft_available():
     from peft import PeftConfig # type: ignore
@@ -60,6 +61,13 @@ class GRPOEnvTrainer(GRPOTrainer):
             **kwargs,
         )
         self.env = env
+        # Create VLLMClient instance (replaces self.llm usage)
+        if hasattr(self, 'llm_address'):
+            host, port = self.llm_address.split(':')
+            self.vllm_client = VLLMClient(host=host, server_port=int(port))
+        else:
+            # Default to localhost:8000 if not specified
+            self.vllm_client = VLLMClient()
 
     def _generate_and_score_completions(
          self, inputs: dict[str, Union[torch.Tensor, Any]]   
@@ -84,15 +92,28 @@ class GRPOEnvTrainer(GRPOTrainer):
         # Gather the original prompts in message dict form, not the text form
         all_prompts = gather_object(prompts)
         if self.accelerator.is_main_process:
+            # Create a compatible SamplingParams for backwards compatibility
+            sampling_params = SamplingParams(
+                temperature=self.temperature,
+                top_p=self.top_p,
+                top_k=self.top_k if hasattr(self, 'top_k') else -1,
+                min_p=self.min_p if hasattr(self, 'min_p') else 0.0,
+                repetition_penalty=self.repetition_penalty,
+                max_tokens=self.max_completion_length,
+                n=self.num_generations,
+            )
+            
+            # Pass vllm_client instead of llm, and include tokenizer
             env_result = self.env.generate(
                 prompts=all_prompts,
-                llm=self.llm,
-                sampling_params=self.sampling_params,
+                vllm_client=self.vllm_client,  # Use VLLMClient instead of LLM
+                sampling_params=sampling_params,
+                tokenizer=self.processing_class,  # Pass tokenizer explicitly
             )
+            
             completion_ids = env_result['ids']
             completion_messages = env_result['messages']
             completion_mask = env_result['mask']
-
         else:
             completion_ids = [None] * len(all_prompts)
             completion_messages = [None] * len(all_prompts)
