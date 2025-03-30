@@ -152,8 +152,9 @@ class ToolEnv(MultiStepEnv):
                 print(f"[DEBUG] _get_step_count: Analyzing assistant message #{assistant_message_count}: {message_preview}")
                 try:
                     parsed = self.llm_parser.parse(message["content"])
+                    # Step Count incremented regardless of tool use
+                    step_count += 1
                     if hasattr(parsed, 'tool') and parsed.tool is not None:
-                        step_count += 1
                         print(f"[DEBUG] _get_step_count: Found tool use, step_count now {step_count}")
                     else:
                         print(f"[DEBUG] _get_step_count: No tool found in message")
