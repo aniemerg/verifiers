@@ -163,6 +163,7 @@ class MultiStepEnv(Environment):
                 print(f"Error during VLLMClient.generate: {e}")
                 raise
         else:
+            print("Using the Legacy Inference code for some reason that should not happen.")
             # Legacy LLM.chat() interface
             # Create a SamplingParams object
             sampling_params = SamplingParams(
