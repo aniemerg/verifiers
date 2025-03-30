@@ -62,12 +62,13 @@ class GRPOEnvTrainer(GRPOTrainer):
         )
         self.env = env
         # Create VLLMClient instance (replaces self.llm usage)
-        if hasattr(self, 'llm_address'):
-            host, port = self.llm_address.split(':')
-            self.vllm_client = VLLMClient(host=host, server_port=int(port))
-        else:
-            # Default to localhost:8000 if not specified
-            self.vllm_client = VLLMClient()
+        if not hasattr(self, 'vllm_client'):
+            if hasattr(self, 'llm_address'):
+                host, port = self.llm_address.split(':')
+                self.vllm_client = VLLMClient(host=host, server_port=int(port))
+            else:
+                # Default to localhost:8000 if not specified
+                self.vllm_client = VLLMClient()
 
     def _generate_and_score_completions(
          self, inputs: dict[str, Union[torch.Tensor, Any]]   
