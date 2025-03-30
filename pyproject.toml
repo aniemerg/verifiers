@@ -18,7 +18,7 @@ dependencies = [
     "duckduckgo-search",
     "trl==0.16.0",
     "liger-kernel",
-    "vllm",
+    "vllm==0.8.1",
     "brave-search",
 ]
 
