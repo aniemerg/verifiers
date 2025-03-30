@@ -65,7 +65,9 @@ class MultiStepEnv(Environment):
              n: int = 1,
              **kwargs: Any) -> List[Dict[str, Any]]:
         
+        print(f"[DEBUG] MultiStepEnv.step: Starting with {len(states)} states")
         live_indices = [i for i, s in enumerate(states) if not s["completed"]]
+        print(f"[DEBUG] MultiStepEnv.step: Found {len(live_indices)} live indices")
         messages_to_step = [states[i]["messages"] for i in live_indices]
         
         # Get the tokenizer from kwargs
@@ -75,6 +77,7 @@ class MultiStepEnv(Environment):
         
         # Check if we're using VLLMClient or the old LLM interface
         if isinstance(vllm_client, VLLMClient):
+            print(f"[DEBUG] MultiStepEnv.step: Using VLLMClient interface")
             # Convert messages to formatted prompt text for VLLMClient
             prompt_texts = []
             for messages in messages_to_step:
@@ -82,8 +85,10 @@ class MultiStepEnv(Environment):
                 text = maybe_apply_chat_template(formatted, tokenizer)["prompt"]
                 prompt_texts.append(text)
             
+            print(f"[DEBUG] MultiStepEnv.step: Formatted {len(prompt_texts)} prompt texts, calling vllm_client.generate()")
             # Generate using VLLMClient.generate()
             try:
+                print(f"[DEBUG] MultiStepEnv.step: Calling VLLMClient.generate with params: temperature={temperature}, top_p={top_p}, top_k={top_k}, min_p={min_p}, max_tokens={max_tokens}, n={n}")
                 completion_ids_list = vllm_client.generate(
                     prompts=prompt_texts,
                     n=n,
@@ -94,6 +99,7 @@ class MultiStepEnv(Environment):
                     repetition_penalty=repetition_penalty,
                     max_tokens=max_tokens,
                 )
+                print(f"[DEBUG] MultiStepEnv.step: Successfully got {len(completion_ids_list)} completion IDs from VLLMClient")
                 
                 def update_state(j, prompt_text, completion_ids):
                     # sleep for 0-1 seconds to avoid rate limiting
@@ -229,6 +235,8 @@ class MultiStepEnv(Environment):
                  sampling_params: SamplingParams = None,
                  **kwargs: Any) -> Dict[str, List[Sequence[int]] | List[str] | List[List[Dict[str, Any]]]]:
         
+        print(f"[DEBUG] MultiStepEnv.generate: Starting with {len(prompts)} prompts")
+        
         # Extract parameters from SamplingParams or use defaults
         if sampling_params:
             temperature = getattr(sampling_params, 'temperature', 1.0)
@@ -247,6 +255,8 @@ class MultiStepEnv(Environment):
             max_tokens = kwargs.get('max_tokens', 100)
             n = kwargs.get('n', 1)
         
+        print(f"[DEBUG] MultiStepEnv.generate: Params - temp={temperature}, top_p={top_p}, top_k={top_k}, min_p={min_p}, max_tokens={max_tokens}, n={n}")
+        
         # Apply any custom sampling args
         for k, v in self.sampling_args.items():
             if k == 'temperature': temperature = v
@@ -256,6 +266,8 @@ class MultiStepEnv(Environment):
             elif k == 'repetition_penalty': repetition_penalty = v
             elif k == 'max_tokens': max_tokens = v
             elif k == 'n': n = v
+        
+        print(f"[DEBUG] MultiStepEnv.generate: Final params after custom args - temp={temperature}, max_tokens={max_tokens}, n={n}")
         
         # Initialize state variables
         all_completed = False
@@ -270,6 +282,7 @@ class MultiStepEnv(Environment):
         
         # Main loop
         while not all_completed:
+            print(f"[DEBUG] MultiStepEnv.generate: Entering step with {len(states)} states, {sum(1 for s in states if not s['completed'])} not completed")
             states = self.step(
                 states, 
                 vllm_client, 
@@ -283,11 +296,14 @@ class MultiStepEnv(Environment):
                 **kwargs
             )
             all_completed = all(state["completed"] for state in states)
+            print(f"[DEBUG] MultiStepEnv.generate: After step, {sum(1 for s in states if not s['completed'])} states not completed")
         
         # Return the completions in the expected format
         completion_messages = [s["messages"][s["prompt_messages"]:] for s in states]
         completion_ids = [s["completion_ids"] for s in states]
         completion_mask = [s["completion_mask"] for s in states]
+        
+        print(f"[DEBUG] MultiStepEnv.generate: Returning {len(completion_ids)} completion_ids, {len(completion_messages)} completion_messages")
         
         return {
             "ids": completion_ids,

@@ -74,6 +74,7 @@ class GRPOEnvTrainer(GRPOTrainer):
          self, inputs: dict[str, Union[torch.Tensor, Any]]   
     ) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
+        print(f"[DEBUG] _generate_and_score_completions: Starting with {len(inputs)} inputs on device {device}")
         prompts = [x["prompt"] for x in inputs] # type: ignore
         prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in inputs] # type: ignore
         prompt_inputs = self.processing_class(
@@ -87,11 +88,13 @@ class GRPOEnvTrainer(GRPOTrainer):
             prompt_mask = prompt_mask[:, -self.max_prompt_length :]
 
         if self.state.global_step != self._last_loaded_step:
+            print(f"[DEBUG] _generate_and_score_completions: Moving model to vLLM at step {self.state.global_step}")
             self._move_model_to_vllm()
             self._last_loaded_step = self.state.global_step
 
         # Gather the original prompts in message dict form, not the text form
         all_prompts = gather_object(prompts)
+        print(f"[DEBUG] _generate_and_score_completions: Gathered {len(all_prompts)} prompts")
         if self.accelerator.is_main_process:
             # Create a compatible SamplingParams for backwards compatibility
             sampling_params = SamplingParams(
@@ -104,18 +107,26 @@ class GRPOEnvTrainer(GRPOTrainer):
                 n=self.num_generations,
             )
             
+            print(f"[DEBUG] _generate_and_score_completions: Created sampling params with temp={self.temperature}, max_tokens={self.max_completion_length}, n={self.num_generations}")
             # Pass vllm_client instead of llm, and include tokenizer
-            env_result = self.env.generate(
-                prompts=all_prompts,
-                vllm_client=self.vllm_client,  # Use VLLMClient instead of LLM
-                sampling_params=sampling_params,
-                tokenizer=self.processing_class,  # Pass tokenizer explicitly
-            )
-            
-            completion_ids = env_result['ids']
-            completion_messages = env_result['messages']
-            completion_mask = env_result['mask']
+            try:
+                print(f"[DEBUG] _generate_and_score_completions: Calling env.generate with {len(all_prompts)} prompts")
+                env_result = self.env.generate(
+                    prompts=all_prompts,
+                    vllm_client=self.vllm_client,  # Use VLLMClient instead of LLM
+                    sampling_params=sampling_params,
+                    tokenizer=self.processing_class,  # Pass tokenizer explicitly
+                )
+                
+                completion_ids = env_result['ids']
+                completion_messages = env_result['messages']
+                completion_mask = env_result['mask']
+                print(f"[DEBUG] _generate_and_score_completions: Got {len(completion_ids)} completion IDs")
+            except Exception as e:
+                print(f"[ERROR] _generate_and_score_completions: Error in env.generate: {e}")
+                raise
         else:
+            print(f"[DEBUG] _generate_and_score_completions: Not main process, creating placeholders")
             completion_ids = [None] * len(all_prompts)
             completion_messages = [None] * len(all_prompts)
             completion_mask = [None] * len(all_prompts)
