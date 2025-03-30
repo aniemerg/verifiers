@@ -98,7 +98,7 @@ class GRPOEnvTrainer(GRPOTrainer):
                 temperature=self.temperature,
                 top_p=self.top_p,
                 top_k=self.top_k if hasattr(self, 'top_k') else -1,
-                min_p=self.min_p if hasattr(self, 'min_p') else 0.0,
+                min_p=0.0 if self.min_p is None else self.min_p,
                 repetition_penalty=self.repetition_penalty,
                 max_tokens=self.max_completion_length,
                 n=self.num_generations,
