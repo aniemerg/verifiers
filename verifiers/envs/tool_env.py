@@ -153,16 +153,25 @@ class ToolEnv(MultiStepEnv):
         return step_count
     
     def is_completed(self, messages: List[Dict[str, str]], **kwargs: Any) -> bool:
+        print(f"[DEBUG] is_completed: Check made")
         try:
             # Check if we've hit max steps by counting tool uses in the message history
             step_count = self._get_step_count(messages)
             if step_count >= self.max_steps:
+                print(f"[DEBUG] is_completed: Max steps reached ({step_count}/{self.max_steps})")
                 return True
             
             parsed = self.llm_parser.parse(messages[-1]["content"])
+            answer_present = hasattr(parsed, 'answer') and parsed.answer is not None
+            if answer_present:
+                print(f"[DEBUG] is_completed: Answer found: {parsed.answer[:50]}...")
+            else:
+                print(f"[DEBUG] is_completed: No answer found in: {messages[-1]['content'][:50]}...")
+            
             # Check if we got a valid answer field (not just None from failed parsing)
-            return hasattr(parsed, 'answer') and parsed.answer is not None
-        except Exception:
+            return answer_present
+        except Exception as e:
+            print(f"[DEBUG] is_completed: Exception while parsing: {str(e)}")
             return False
 
     def call_tool(self, tool_json: str, **kwargs: Any) -> str:
