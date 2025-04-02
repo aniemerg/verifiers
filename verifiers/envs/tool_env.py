@@ -141,47 +141,32 @@ class ToolEnv(MultiStepEnv):
             # Account for all few-shot messages
             conversation_start += len(self.few_shot)
         
-        print(f"[DEBUG] _get_step_count: Analyzing {len(messages)} messages, starting from index {conversation_start}")
-        
         # Only count tool uses from the actual conversation
-        assistant_message_count = 0
         for i, message in enumerate(messages[conversation_start:], start=conversation_start):
             if message.get("role") == "assistant":
-                assistant_message_count += 1
-                message_preview = message["content"][:50] + "..." if len(message["content"]) > 50 else message["content"]
-                print(f"[DEBUG] _get_step_count: Analyzing assistant message #{assistant_message_count}: {message_preview}")
                 try:
                     parsed = self.llm_parser.parse(message["content"])
                     # Step Count incremented regardless of tool use
                     step_count += 1
-                    if hasattr(parsed, 'tool') and parsed.tool is not None:
-                        print(f"[DEBUG] _get_step_count: Found tool use, step_count now {step_count}")
-                    else:
-                        print(f"[DEBUG] _get_step_count: No tool found in message")
-                except Exception as e:
-                    print(f"[DEBUG] _get_step_count: Parse error: {str(e)}")
+                except Exception:
+                    pass
         
         # Add a fallback counting mechanism that doesn't rely on parsing
         alt_step_count = sum(1 for m in messages[conversation_start:] 
                              if m.get("role") == "assistant" and "<tool>" in m["content"])
         
-        print(f"[DEBUG] _get_step_count: Final count {step_count} (alt count: {alt_step_count})")
-        
         # If we're getting close to max_steps but not quite there, and the alternative count suggests
         # we should be higher, use the alternative count instead
         if alt_step_count > step_count and self.max_steps - step_count <= 2:
-            print(f"[DEBUG] _get_step_count: Using alt count {alt_step_count} instead of {step_count}")
             return alt_step_count
         
         return step_count
     
     def is_completed(self, messages: List[Dict[str, str]], **kwargs: Any) -> bool:
-        print(f"[DEBUG] is_completed: Check made")
         try:
             # Check if we've hit max steps by counting tool uses in the message history
             step_count = self._get_step_count(messages)
             if step_count >= self.max_steps:
-                print(f"[DEBUG] is_completed: Max steps reached ({step_count}/{self.max_steps})")
                 return True
             
             # Try to parse message content to find answer
@@ -189,7 +174,6 @@ class ToolEnv(MultiStepEnv):
                 parsed = self.llm_parser.parse(messages[-1]["content"])
                 answer_present = hasattr(parsed, 'answer') and parsed.answer is not None
                 if answer_present:
-                    print(f"[DEBUG] is_completed: Answer found: {parsed.answer[:50]}...")
                     return True
             except Exception:
                 pass
@@ -197,13 +181,10 @@ class ToolEnv(MultiStepEnv):
             # Fallback check: look for direct text pattern indicating answer
             last_content = messages[-1]["content"].lower()
             if "the answer is " in last_content or "final answer:" in last_content:
-                print(f"[DEBUG] is_completed: Answer-like pattern found in: {last_content[:50]}...")
                 return True
                 
-            print(f"[DEBUG] is_completed: No answer found in: {messages[-1]['content'][:50]}...")
             return False
-        except Exception as e:
-            print(f"[DEBUG] is_completed: Exception while parsing: {str(e)}")
+        except Exception:
             return False
 
     def call_tool(self, tool_json: str, **kwargs: Any) -> str:
