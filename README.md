@@ -55,9 +55,52 @@ def env_response(self, messages: List[Dict[str, str]], **kwargs: Any) -> Dict[st
     pass
 ```
 
+## Tool Systems
+
+Verifiers supports two different tool systems that can be used with compatible models:
+
+### Verifiers Native Tools (ToolEnv)
+
+This uses the `<tool_call>` tag format with JSON payload:
+
+```
+<tool_call>
+{"name": "calculator", "args": {"expression": "2 + 2"}}
+</tool_call>
+```
+
+### SmolaAgents Tools (SmolaToolEnv)
+
+Verifiers now supports SmolaAgents tools, which use the `<tool>` tag format:
+
+```
+<tool>
+{"name": "calculator", "args": {"expression": "2 + 2"}}
+</tool>
+```
+
+To use SmolaAgents tools:
+
+```python
+from verifiers.envs import SmolaToolEnv
+from verifiers.tools import calculator
+from verifiers.prompts import SMOLA_CALCULATOR_PROMPT, get_calculator_few_shots
+
+# Set up environment with SmolaAgents tools
+env = SmolaToolEnv(
+    tools=[calculator.calculate],
+    system_prompt=SMOLA_CALCULATOR_PROMPT,
+    few_shot=get_calculator_few_shots(),
+    max_steps=10
+)
+```
+
+See `examples/gsm8k_smola_calculator.py` for a complete example.
+
 ## Features
-- [X] Environments (`MultiTurnEnv`): `DoubleCheckEnv`, `CodeEnv`, `ToolEnv`
-- [X] Multi-turn tool use in `CodeEnv` and `ToolEnv`
+- [X] Environments (`MultiTurnEnv`): `DoubleCheckEnv`, `CodeEnv`, `ToolEnv`, `SmolaToolEnv`
+- [X] Multi-turn tool use in `CodeEnv`, `ToolEnv`, and `SmolaToolEnv`
+- [X] Support for SmolaAgents tools with `<tool>` tag format
 - [X] Dataset formatting + XML parsers
 - [X] Basic rubrics for math/code correctness + formatting
 - [X] Defaults for GRPO, model, tokenizer, etc.
